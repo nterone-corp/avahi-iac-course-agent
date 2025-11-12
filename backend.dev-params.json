@@ -1,0 +1,73 @@
+{
+    "StackName": "enterone-website-ai-backend-dev",
+    "Parameters": [
+        {
+            "ParameterKey": "EnvironmentName",
+            "ParameterValue": "dev"
+        },
+        {
+            "ParameterKey": "ImageTag",
+            "ParameterValue": "dev"
+        },
+        {
+            "ParameterKey": "APIFunctionName",
+            "ParameterValue": "enterone-website-course-agent-dev"
+        },
+        {
+            "ParameterKey": "EventHandlerFunctionName",
+            "ParameterValue": "enterone-website-event-handler-dev"
+        },
+        {
+            "ParameterKey": "VectorizeFunctionName",
+            "ParameterValue": "enterone-website-vectorize-file-dev"
+        },
+        {
+            "ParameterKey": "APIRoleName",
+            "ParameterValue": "enterone-website-course-agent-dev"
+        },
+        {
+            "ParameterKey": "EventHandlerRoleName",
+            "ParameterValue": "enterone-website-event-handler-dev"
+        },
+        {
+            "ParameterKey": "VectorizeRoleName",
+            "ParameterValue": "enterone-website-vectorize-file-dev"
+        },
+        {
+            "ParameterKey": "ChatLogsBucketName",
+            "ParameterValue": "enterone-website-course-agent-chatlogs-dev"
+        },
+        {
+            "ParameterKey": "ExistingTargetSecurityGroup",
+            "ParameterValue": "sg-0faf688d0c5337796"
+        },
+        {
+            "ParameterKey": "ApiGatewayName",
+            "ParameterValue": "enterone-website-course-agent-dev"
+        },
+        {
+            "ParameterKey": "PDFS3Bucket",
+            "ParameterValue": "enterone-website-assets-dev"
+        }
+    ],
+    "TimeoutInMinutes": 15,
+    "Capabilities": [
+        "CAPABILITY_IAM",
+        "CAPABILITY_NAMED_IAM"
+    ],
+    
+    "Tags": [
+        {
+            "Key": "created-by",
+            "Value": "Iyad"
+        },
+        {
+            "Key": "project",
+            "Value": "website-ai-agent"
+        },
+        {
+            "Key": "env",
+            "Value": "dev"
+        }
+    ]
+}
