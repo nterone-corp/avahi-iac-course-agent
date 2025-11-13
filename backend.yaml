@@ -222,7 +222,7 @@ Resources:
     DependsOn:
       - OpenSearchCollection
     Properties:
-      Name: !Sub "data-$EnvironmentName"
+      Name: !Sub "data-${EnvironmentName}"
       Type: data
       Policy: !Sub |
         [
