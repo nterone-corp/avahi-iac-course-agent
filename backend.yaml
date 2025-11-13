@@ -53,7 +53,7 @@ Parameters:
   SubnetIds:
     Description: List
     Type: List<AWS::EC2::Subnet::Id>
-    Default: subnet-0721112e584692f49,subnet-084c51d4798c21cd0,subnet-022206ed2477299fa
+    Default: subnet-090fe09a41e65518a, subnet-02c6b0991deaf9454
   ExistingTargetSecurityGroup:
     Description: Security group for the existing RDS database
     Type: AWS::EC2::SecurityGroup::Id
@@ -291,7 +291,6 @@ Resources:
           BUCKET_NAME: !Ref ChatLogsBucket
           BUCKET_PREFIX: sessions/
           OPENSEARCH_HOST: !GetAtt OpenSearchCollection.CollectionEndpoint
-          BEDROCK_ENDPOINT_URL: !Sub "https://bedrock-runtime.${AWS::Region}.amazonaws.com"
           REGION_NAME: !Ref AWS::Region
           MODEL_ID: us.anthropic.claude-sonnet-4-5-20250929-v1:0
           USERNAME_DB: ai_agent_user
@@ -317,7 +316,6 @@ Resources:
       Environment:
         Variables:
           STEP_FUNCTION_ARN: !Ref VectorizeFileStateMachine
-          STEP_FUNCTION_ENDPOINT_URL: !Sub "https://states.${AWS::Region}.amazonaws.com"
           USERNAME_DB: ai_agent_user
           PASSWORD_DB: D@taFlow!98zR
           HOST_DB: enterone-website-shared.cdc8m2awyyxs.us-east-2.rds.amazonaws.com
@@ -342,7 +340,6 @@ Resources:
           OPENSEARCH_HOST: !GetAtt OpenSearchCollection.CollectionEndpoint
           REGION_NAME: !Ref AWS::Region
           MODEL_ID: us.anthropic.claude-sonnet-4-5-20250929-v1:0
-          BEDROCK_ENDPOINT_URL: !Sub "https://bedrock-runtime.${AWS::Region}.amazonaws.com"
           INDEX_NAME: enterone-course-pdfs
           S3_BUCKET: !Ref PDFS3Bucket
       VpcConfig:
