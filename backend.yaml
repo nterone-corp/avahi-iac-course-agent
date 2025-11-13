@@ -68,6 +68,12 @@ Resources:
     Properties:
       GroupDescription: SG for Lambda to connect to RDS/service
       VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 443
