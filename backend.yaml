@@ -63,9 +63,6 @@ Parameters:
   PDFS3Bucket:
     Description: S3 Bucket where course PDFs are stored
     Type: String
-  PrefixListId:
-    Type: String
-    Default: pl-7ba54012
 
 Resources:
   LambdaSecurityGroup:
@@ -73,6 +70,11 @@ Resources:
     Properties:
       GroupDescription: SG for Lambda to connect to RDS/service
       VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
 
   AllowLambdaIngress:
     Type: AWS::EC2::SecurityGroupIngress
@@ -91,14 +93,6 @@ Resources:
       ToPort: 5432
       DestinationSecurityGroupId: !Ref ExistingTargetSecurityGroup
       GroupId: !Ref LambdaSecurityGroup
-
-  AllowLambdaEgressToS3:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      CidrIp: 0.0.0.0/0
-      IpProtocol: tcp
-      FromPort: 443
-      ToPort: 443
 
   APILambdaExecutionRole:
     Type: AWS::IAM::Role
