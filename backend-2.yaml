@@ -1,79 +1,106 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Placeholder
+Description: EnterOne Backend Vectorization Stack
 
+###############################################################################
+# PARAMETERS
+###############################################################################
 Parameters:
   EnvironmentName:
     Type: String
     Default: dev
+
   APIRepositoryName:
     Type: String
     Default: enterone/course-agent
+
   VectorizeFileRepositoryName:
     Type: String
     Default: enterone/vectorize
+
   EventHandlerRepositoryName:
     Type: String
     Default: enterone/event-handler
+
   ImageTag:
     Type: String
-    Default: latest
+    Default: dev
+
   APIFunctionName:
     Type: String
     Default: enterone-website-dev-course-agent
+
   EventHandlerFunctionName:
     Type: String
     Default: enterone-website-dev-event-handler
+
   VectorizeFunctionName:
     Type: String
     Default: enterone-website-dev-vectorize-file
+
   ChatLogsBucketName:
     Type: String
     Default: course-agent-chatlogs
+
   APIRoleName:
     Type: String
     Default: course-agent-role
+
   EventHandlerRoleName:
     Type: String
     Default: event-handler-role
+
   VectorizeRoleName:
     Type: String
     Default: vectorize-file-role
+
   ApiGatewayName:
     Type: String
     Default: enterone-website-course-agent-api-dev
+
   MemorySize:
     Type: Number
     Default: 512
+
   TimeoutSeconds:
     Type: Number
     Default: 600
+
   VpcId:
     Type: AWS::EC2::VPC::Id
     Default: vpc-091e93d060f4e78cf
+
   SubnetIds:
-    Description: List
     Type: List<AWS::EC2::Subnet::Id>
     Default: subnet-090fe09a41e65518a, subnet-02c6b0991deaf9454
+
   ExistingTargetSecurityGroup:
-    Description: Security group for the existing RDS database
     Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-0faf688d0c5337796
+
   PDFS3Bucket:
-    Description: S3 Bucket where course PDFs are stored
     Type: String
     Default: enterone-website-assets-staging
 
+  AllowedOrigin:
+    Type: String
+    Default: https://d232n70twdz0lt.cloudfront.net
+
+
+###############################################################################
+# SECURITY GROUPS
+###############################################################################
 Resources:
+
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: SG for Lambda to connect to RDS/service
+      GroupDescription: SG for Lambdas to connect to RDS & AOSS
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
-
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 443
@@ -98,6 +125,10 @@ Resources:
       DestinationSecurityGroupId: !Ref ExistingTargetSecurityGroup
       GroupId: !Ref LambdaSecurityGroup
 
+
+###############################################################################
+# IAM ROLES
+###############################################################################
   APILambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -106,8 +137,7 @@ Resources:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
+            Principal: { Service: lambda.amazonaws.com }
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
@@ -122,12 +152,11 @@ Resources:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
+            Principal: { Service: lambda.amazonaws.com }
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-        - arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
 
   VectorizeLambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -137,20 +166,24 @@ Resources:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
+            Principal: { Service: lambda.amazonaws.com }
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
 
   VPCInterfacePolicy:
     Type: AWS::IAM::Policy
     Properties:
       PolicyName: LambdaVPCNetworkInterfaceAccess
+      Roles:
+        - !Ref APILambdaExecutionRole
+        - !Ref EventHandlerRoleName
+        - !Ref VectorizeLambdaExecutionRole
       PolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Action:
@@ -160,26 +193,43 @@ Resources:
               - ec2:AttachNetworkInterface
               - ec2:DetachNetworkInterface
             Resource: "*"
-      Roles:
-        - !Ref APILambdaExecutionRole
-        - !Ref EventHandlerRoleName
-        - !Ref VectorizeLambdaExecutionRole
 
   AOSSPolicy:
     Type: AWS::IAM::Policy
     Properties:
       PolicyName: AllowAllAOSSOperations
+      Roles:
+        - !Ref VectorizeLambdaExecutionRole
+        - !Ref APILambdaExecutionRole
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
-            Action:
-              - aoss:*
+            Action: aoss:*
             Resource: "*"
-      Roles:
-        - !Ref VectorizeLambdaExecutionRole
-        - !Ref APILambdaExecutionRole
 
+
+###############################################################################
+# SQS QUEUE
+###############################################################################
+  VectorizeDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${EnvironmentName}-vectorize-dlq-aaa"
+
+  VectorizeQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${EnvironmentName}-vectorize-queue-aaa"
+      VisibilityTimeout: 900
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt VectorizeDLQ.Arn
+        maxReceiveCount: 5
+
+
+###############################################################################
+# AOSS SECURITY POLICIES
+###############################################################################
   EncryptionPolicy:
     Type: AWS::OpenSearchServerless::SecurityPolicy
     Properties:
@@ -187,13 +237,8 @@ Resources:
       Type: encryption
       Policy: !Sub |
         {
-          "Rules": [
-            {
-              "ResourceType": "collection",
-              "Resource": ["collection/${EnvironmentName}-collection"]
-            }
-          ],
-          "AWSOwnedKey": true
+          "Rules":[{"ResourceType":"collection","Resource":["collection/${EnvironmentName}-collection"]}],
+          "AWSOwnedKey":true
         }
 
   NetworkPolicy:
@@ -204,40 +249,32 @@ Resources:
       Policy: !Sub |
         [
           {
-            "Rules": [
-              {
-                "ResourceType": "collection",
-                "Resource": ["collection/${EnvironmentName}-collection"]
-              }
-            ],
-            "AllowFromPublic": true
+            "Rules":[{"ResourceType":"collection","Resource":["collection/${EnvironmentName}-collection"]}],
+            "AllowFromPublic":true
           }
         ]
 
   OpenSearchCollection:
     Type: AWS::OpenSearchServerless::Collection
-    DependsOn:
-      - EncryptionPolicy
-      - NetworkPolicy
+    DependsOn: [EncryptionPolicy, NetworkPolicy]
     Properties:
       Name: !Sub "${EnvironmentName}-collection"
       Type: VECTORSEARCH
 
   DataAccessPolicy:
     Type: AWS::OpenSearchServerless::AccessPolicy
-    DependsOn:
-      - OpenSearchCollection
+    DependsOn: [OpenSearchCollection]
     Properties:
       Name: !Sub "data-${EnvironmentName}"
       Type: data
       Policy: !Sub |
         [
           {
-            "Rules": [
+            "Rules":[
               {
-                "ResourceType": "collection",
-                "Resource": ["collection/${EnvironmentName}-collection"],
-                "Permission": [
+                "ResourceType":"collection",
+                "Resource":["collection/${EnvironmentName}-collection"],
+                "Permission":[
                   "aoss:CreateCollectionItems",
                   "aoss:DeleteCollectionItems",
                   "aoss:UpdateCollectionItems",
@@ -245,34 +282,25 @@ Resources:
                 ]
               },
               {
-                "ResourceType": "index",
-                "Resource": ["index/${EnvironmentName}-collection/*"],
-                "Permission": [
-                  "aoss:CreateIndex",
-                  "aoss:DeleteIndex",
-                  "aoss:UpdateIndex",
-                  "aoss:DescribeIndex",
-                  "aoss:ReadDocument",
-                  "aoss:WriteDocument"
+                "ResourceType":"index",
+                "Resource":["index/${EnvironmentName}-collection/*"],
+                "Permission":[
+                  "aoss:CreateIndex","aoss:DeleteIndex","aoss:UpdateIndex",
+                  "aoss:DescribeIndex","aoss:ReadDocument","aoss:WriteDocument"
                 ]
               }
             ],
-            "Principal": [
+            "Principal":[
               "${APILambdaExecutionRole.Arn}",
               "${VectorizeLambdaExecutionRole.Arn}"
             ]
           }
         ]
 
-  OpenSearchManagedVPCEndpoint:
-    Type: AWS::OpenSearchServerless::VpcEndpoint
-    Properties:
-      Name: !Sub aoss-vpc-endpoint-${EnvironmentName}
-      VpcId: !Ref VpcId
-      SubnetIds: !Ref SubnetIds
-      SecurityGroupIds:
-        - !Ref LambdaSecurityGroup
 
+###############################################################################
+# S3 BUCKET
+###############################################################################
   ChatLogsBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -283,6 +311,10 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
+
+###############################################################################
+# LAMBDAS
+###############################################################################
   FastAPILambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -306,10 +338,11 @@ Resources:
           HOST_DB: enterone-website-shared.cdc8m2awyyxs.us-east-2.rds.amazonaws.com
           DATABASE: website_staging
           INDEX_NAME: enterone-course-pdfs
+          WIDGET_URL: !Ref AllowedOrigin
       VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
         SubnetIds: !Ref SubnetIds
+
 
   EventHandlerLambda:
     Type: AWS::Lambda::Function
@@ -323,15 +356,15 @@ Resources:
         ImageUri: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EventHandlerRepositoryName}:${ImageTag}"
       Environment:
         Variables:
-          STEP_FUNCTION_ARN: !Ref VectorizeFileStateMachine
+          VECTORIZE_QUEUE_URL: !Ref VectorizeQueue
           USERNAME_DB: ai_agent_user
           PASSWORD_DB: D@taFlow!98zR
           HOST_DB: enterone-website-shared.cdc8m2awyyxs.us-east-2.rds.amazonaws.com
           DATABASE: website_staging
       VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
         SubnetIds: !Ref SubnetIds
+
 
   VectorizeFileLambda:
     Type: AWS::Lambda::Function
@@ -340,6 +373,7 @@ Resources:
       Role: !GetAtt VectorizeLambdaExecutionRole.Arn
       Timeout: !Ref TimeoutSeconds
       MemorySize: !Ref MemorySize
+      ReservedConcurrentExecutions: 10
       PackageType: Image
       Code:
         ImageUri: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${VectorizeFileRepositoryName}:${ImageTag}"
@@ -352,72 +386,27 @@ Resources:
           INDEX_NAME: enterone-course-pdfs
           S3_BUCKET: !Ref PDFS3Bucket
       VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
         SubnetIds: !Ref SubnetIds
 
-  StepFunctionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: states.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: LambdaInvokePolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - lambda:InvokeFunction
-                Resource: !GetAtt VectorizeFileLambda.Arn
 
-  VectorizeFileStateMachine:
-    Type: AWS::StepFunctions::StateMachine
-    DependsOn:
-      - StepFunctionRole
-      - VectorizeFileLambda
+###############################################################################
+# SQS → VECTORIZE LAMBDA EVENT SOURCE
+###############################################################################
+  VectorizeLambdaSQSESM:
+    Type: AWS::Lambda::EventSourceMapping
     Properties:
-      RoleArn: !GetAtt StepFunctionRole.Arn
-      StateMachineName: !Sub "${AWS::StackName}-vectorize-file-${EnvironmentName}"
-      StateMachineType: STANDARD
-      DefinitionString: !Sub |
-        {
-          "Comment": "Step Functions to Vectorize a File and upload to AOSS collection",
-          "StartAt": "VectorizeFile",
-          "States": {
-            "VectorizeFile": {
-              "Type": "Task",
-              "MaxConcurrency": 150,
-              "Resource": "arn:aws:states:::lambda:invoke",
-              "OutputPath": "$.Payload",
-              "Parameters": {
-                "Payload.$": "$",
-                "FunctionName": "${VectorizeFileLambda.Arn}"
-              },
-              "Retry": [
-                {
-                  "ErrorEquals": [
-                    "Lambda.ServiceException",
-                    "Lambda.AWSLambdaException",
-                    "Lambda.SdkClientException",
-                    "Lambda.TooManyRequestsException"
-                  ],
-                  "IntervalSeconds": 1,
-                  "MaxAttempts": 3,
-                  "BackoffRate": 2,
-                  "JitterStrategy": "FULL"
-                }
-              ],
-              "End": true
-            }
-          }
-        }
+      EventSourceArn: !GetAtt VectorizeQueue.Arn
+      FunctionName: !Ref VectorizeFileLambda
+      BatchSize: 1
+      MaximumBatchingWindowInSeconds: 5
+      Enabled: true
+      ScalingConfig:
+        MaximumConcurrency: 10
 
+###############################################################################
+# API GATEWAY + CORS
+###############################################################################
   RestApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
@@ -469,6 +458,40 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FastAPILambda.Arn}/invocations
+        TimeoutInMillis: 90000
+
+  # CORS OPTIONS
+  ProxyOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: "{ \"statusCode\": 200 }"
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Origin: !Sub "'${AllowedOrigin}'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+
+            ResponseTemplates:
+              application/json: ""
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Credentials: true
+          # ResponseModels:
+          #  application/json: "Empty"
+
 
   LambdaInvokePermission:
     Type: AWS::Lambda::Permission
@@ -483,18 +506,14 @@ Resources:
     DependsOn:
       - ApiV1AnyMethod
       - ProxyAnyMethod
+      - ProxyOptionsMethod
     Properties:
       RestApiId: !Ref RestApi
       StageName: !Ref EnvironmentName
 
-  # InvokeOnCreate:
-  #   Type: AWS::CloudFormation::CustomResource
-  #   DependsOn:
-  #     - EventHandlerLambda
-  #   Properties:
-  #     ServiceToken: !GetAtt EventHandlerLambda.Arn
-  #     ServiceTimeout: 600
-
+###############################################################################
+# OUTPUTS
+###############################################################################
 Outputs:
   ApiInvokeUrl:
     Description: Base Invoke URL for the API
