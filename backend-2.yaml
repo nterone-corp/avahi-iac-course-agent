@@ -249,7 +249,10 @@ Resources:
       Policy: !Sub |
         [
           {
-            "Rules":[{"ResourceType":"collection","Resource":["collection/${EnvironmentName}-collection"]}],
+            "Rules":[
+              {"ResourceType":"collection","Resource":["collection/${EnvironmentName}-collection"]},
+              {"ResourceType": "dashboard", "Resource": ["collection/${EnvironmentName}-collection"]}
+            ],
             "AllowFromPublic":true
           }
         ]
@@ -292,7 +295,9 @@ Resources:
             ],
             "Principal":[
               "${APILambdaExecutionRole.Arn}",
-              "${VectorizeLambdaExecutionRole.Arn}"
+              "${VectorizeLambdaExecutionRole.Arn}",
+              "{{resolve:ssm:/enterone-course-agent-sso-roles-aoss/admin}}",
+              "{{resolve:ssm:/enterone-course-agent-sso-roles-aoss/dev}}"
             ]
           }
         ]
